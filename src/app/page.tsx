@@ -36,6 +36,7 @@ export default function Home() {
   return (
     <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif" }}>
       <h1>Words in Words</h1>
+      <p><em>version: DUPES-v1</em></p>
       <p>
         Daily Word: <strong>WATERMELON</strong>
       </p>
