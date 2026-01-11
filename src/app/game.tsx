@@ -37,9 +37,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif" }}>
       <h1>Words in Words</h1>
       <p>
-        <p>
   Daily Word: <strong>{dailyWord}</strong>
-</p>
       </p>
 
       <input
