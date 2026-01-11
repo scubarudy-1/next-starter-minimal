@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
-import path from "path";
+import { createRequire } from "module";
 import { getDailyWord } from "../../../utils/dailyWord";
 
 // --- letter counting ---
@@ -14,17 +14,19 @@ function countLetters(word: string) {
 // --- dictionary loading (cached) ---
 let WORDS: Set<string> | null = null;
 
+const require = createRequire(import.meta.url);
+// word-list exports a filesystem path to a newline-delimited word list file
+const wordListPath: string = require("word-list");
+
 async function getWordsSet(): Promise<Set<string>> {
   if (WORDS) return WORDS;
 
-  // NOTE: adjust path if your enable.txt is NOT under src/data
-  const filePath = path.join(process.cwd(), "src", "data", "enable.txt");
-  const raw = await readFile(filePath, "utf8");
+  const raw = await readFile(wordListPath, "utf8");
 
   const words = raw
     .split(/\r?\n/)
-    .map((w) => w.trim().toLowerCase())
-    .filter((w) => /^[a-z]+$/.test(w) && w.length >= 4);
+    .map((w: string) => w.trim().toLowerCase())
+    .filter((w: string) => /^[a-z]+$/.test(w) && w.length >= 4);
 
   WORDS = new Set(words);
   return WORDS;
@@ -72,11 +74,7 @@ export async function POST(request: Request) {
   if (!dict.has(guess))
     return NextResponse.json({ valid: false, reason: "not_in_dictionary" });
   if (!passesPluralRule(guess, dict))
-    return NextResponse.json({
-      valid: false,
-      reason: "plural_requires_singular",
-    });
+    return NextResponse.json({ valid: false, reason: "plural_requires_singular" });
 
   return NextResponse.json({ valid: true });
 }
-
