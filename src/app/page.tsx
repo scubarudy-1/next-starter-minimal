@@ -1,4 +1,4 @@
-import Game from "./Game";
+import Game from "./game";
 import { getDailyWord } from "@/utils/dailyWord";
 
 export default function Page() {
