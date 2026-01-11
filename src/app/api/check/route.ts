@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
-import { getDailyWord } from "@/utils/dailyWord";
+import { getDailyWord } from "../../../utils/dailyWord";
 
 // --- letter counting ---
 function countLetters(word: string) {
