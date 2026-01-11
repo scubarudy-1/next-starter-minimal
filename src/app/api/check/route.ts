@@ -1,7 +1,13 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { getDailyWord } from "../../../utils/dailyWord";
-import wordListPath from "word-list";
+import wordListPathImport from "word-list";
+
+const wordListPath =
+  (wordListPathImport as unknown as { default?: string }).default ??
+  (wordListPathImport as unknown as string);
 
 // --- letter counting ---
 function countLetters(word: string) {
@@ -17,7 +23,6 @@ let WORDS: Set<string> | null = null;
 async function getWordsSet(): Promise<Set<string>> {
   if (WORDS) return WORDS;
 
-  // word-list exports a filesystem path to a newline-delimited word list file
   const raw = await readFile(wordListPath, "utf8");
 
   const words = raw
@@ -30,7 +35,6 @@ async function getWordsSet(): Promise<Set<string>> {
 }
 
 function passesPluralRule(guess: string, dict: Set<string>) {
-  // Plurals allowed only if singular exists
   if (guess.endsWith("s") && guess.length > 4) {
     const singular = guess.slice(0, -1);
     return dict.has(singular);
@@ -49,32 +53,35 @@ function lettersFit(guess: string, dailyWord: string) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const guessRaw = String(body.guess ?? "");
-  const guess = guessRaw.trim().toLowerCase();
+  try {
+    const body = await request.json().catch(() => ({}));
+    const guessRaw = String(body.guess ?? "");
+    const guess = guessRaw.trim().toLowerCase();
 
-  const dailyWord = getDailyWord().toLowerCase();
+    const dailyWord = getDailyWord().toLowerCase();
 
-  // Basic checks
-  if (!guess) return NextResponse.json({ valid: false, reason: "empty" });
-  if (!/^[a-z]+$/.test(guess))
-    return NextResponse.json({ valid: false, reason: "nonalpha" });
-  if (guess.length < 4 || guess.length > dailyWord.length)
-    return NextResponse.json({ valid: false, reason: "length" });
-  if (guess === dailyWord)
-    return NextResponse.json({ valid: false, reason: "daily_word_disallowed" });
-  if (!lettersFit(guess, dailyWord))
-    return NextResponse.json({ valid: false, reason: "letters_dont_fit" });
+    if (!guess) return NextResponse.json({ valid: false, reason: "empty" });
+    if (!/^[a-z]+$/.test(guess))
+      return NextResponse.json({ valid: false, reason: "nonalpha" });
+    if (guess.length < 4 || guess.length > dailyWord.length)
+      return NextResponse.json({ valid: false, reason: "length" });
+    if (guess === dailyWord)
+      return NextResponse.json({ valid: false, reason: "daily_word_disallowed" });
+    if (!lettersFit(guess, dailyWord))
+      return NextResponse.json({ valid: false, reason: "letters_dont_fit" });
 
-  // Dictionary checks
-  const dict = await getWordsSet();
-  if (!dict.has(guess))
-    return NextResponse.json({ valid: false, reason: "not_in_dictionary" });
-  if (!passesPluralRule(guess, dict))
-    return NextResponse.json({
-      valid: false,
-      reason: "plural_requires_singular",
-    });
+    const dict = await getWordsSet();
+    if (!dict.has(guess))
+      return NextResponse.json({ valid: false, reason: "not_in_dictionary" });
+    if (!passesPluralRule(guess, dict))
+      return NextResponse.json({ valid: false, reason: "plural_requires_singular" });
 
-  return NextResponse.json({ valid: true });
+    return NextResponse.json({ valid: true });
+  } catch (err) {
+    console.error("API /check error:", err);
+    return NextResponse.json(
+      { valid: false, reason: "server_exception" },
+      { status: 500 }
+    );
+  }
 }
