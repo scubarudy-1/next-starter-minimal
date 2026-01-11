@@ -40,15 +40,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     [results]
   );
 
-  const validWords = useMemo(
-    () => results.filter((r) => r.valid),
-    [results]
-  );
+  const validWords = useMemo(() => results.filter((r) => r.valid), [results]);
 
-  const invalidWords = useMemo(
-    () => results.filter((r) => !r.valid),
-    [results]
-  );
+  const invalidWords = useMemo(() => results.filter((r) => !r.valid), [results]);
 
   // ----- Load saved state when dailyWord changes
   useEffect(() => {
@@ -125,10 +119,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
   };
 
-  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
-    if (e.key === "Enter") handleSubmit();
-  };
-
   const resetToday = () => {
     setResults([]);
     setGuess("");
@@ -137,12 +127,29 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   };
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif", maxWidth: 720, margin: "0 auto" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem" }}>
+    <main
+      style={{
+        padding: "2rem",
+        fontFamily: "Arial, sans-serif",
+        maxWidth: 720,
+        margin: "0 auto",
+      }}
+    >
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: "1rem",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>Words in Words</h1>
           <p style={{ margin: "0.25rem 0 0", opacity: 0.8 }}>
-            Today’s word: <strong style={{ letterSpacing: 1 }}>{dailyWord.toUpperCase()}</strong>
+            Today’s word:{" "}
+            <strong style={{ letterSpacing: 1 }}>
+              {dailyWord.toUpperCase()}
+            </strong>
           </p>
         </div>
 
@@ -154,59 +161,84 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         </div>
       </header>
 
-      <section style={{ marginTop: "1.5rem", display: "flex", gap: "0.5rem" }}>
-        <input
-          value={guess}
-          onChange={(e) => setGuess(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Enter a word (4–7 letters score)"
-          style={{
-            flex: 1,
-            padding: "0.75rem",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            fontSize: "1rem",
+      {/* ENTER-TO-SUBMIT FORM */}
+      <section style={{ marginTop: "1.5rem" }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSubmit();
           }}
-          disabled={isChecking}
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={isChecking}
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "white",
-            cursor: isChecking ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
+          style={{ display: "flex", gap: "0.5rem" }}
         >
-          {isChecking ? "Checking..." : "Submit"}
-        </button>
-        <button
-          onClick={resetToday}
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "white",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-          title="Clears your guesses for today"
-        >
-          Reset
-        </button>
+          <input
+            value={guess}
+            onChange={(e) => setGuess(e.target.value)}
+            placeholder="Enter a word (4–7 letters score)"
+            style={{
+              flex: 1,
+              padding: "0.75rem",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontSize: "1rem",
+            }}
+            disabled={isChecking}
+            autoFocus
+            inputMode="text"
+            enterKeyHint="send"
+          />
+
+          <button
+            type="submit"
+            disabled={isChecking}
+            style={{
+              padding: "0.75rem 1rem",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "white",
+              cursor: isChecking ? "not-allowed" : "pointer",
+              fontWeight: 600,
+            }}
+          >
+            {isChecking ? "Checking..." : "Submit"}
+          </button>
+
+          <button
+            type="button"
+            onClick={resetToday}
+            style={{
+              padding: "0.75rem 1rem",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "white",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+            title="Clears your guesses for today"
+          >
+            Reset
+          </button>
+        </form>
       </section>
 
       {error && (
-        <p style={{ marginTop: "0.75rem", color: "crimson" }}>
-          {error}
-        </p>
+        <p style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</p>
       )}
 
-      <section style={{ marginTop: "1.5rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
+      <section
+        style={{
+          marginTop: "1.5rem",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "1rem",
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: "1rem",
+          }}
+        >
           <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
             Valid ({validWords.length})
           </h2>
@@ -230,7 +262,13 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           )}
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: "1rem",
+          }}
+        >
           <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
             Invalid ({invalidWords.length})
           </h2>
