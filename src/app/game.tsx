@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function Home() {
+export default function Game({ dailyWord }: { dailyWord: string }) {
   const [guess, setGuess] = useState("");
   const [results, setResults] = useState<{ word: string; valid: boolean }[]>(
     []
@@ -37,7 +37,9 @@ export default function Home() {
     <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif" }}>
       <h1>Words in Words</h1>
       <p>
-        Daily Word: <strong>WATERMELON</strong>
+        <p>
+  Daily Word: <strong>{dailyWord}</strong>
+</p>
       </p>
 
       <input
