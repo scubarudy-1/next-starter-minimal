@@ -24,7 +24,7 @@ async function getWordsSet(): Promise<Set<string>> {
   const words = raw
     .split(/\r?\n/)
     .map((w) => w.trim().toLowerCase())
-    .filter((w) => /^[a-z]+$/.test(w) && w.length >= 4 && w.length <= 7);
+    .filter((w) => /^[a-z]+$/.test(w) && w.length >= 4);
 
   WORDS = new Set(words);
   return WORDS;
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   if (!guess) return NextResponse.json({ valid: false, reason: "empty" });
   if (!/^[a-z]+$/.test(guess))
     return NextResponse.json({ valid: false, reason: "nonalpha" });
-  if (guess.length < 4 || guess.length > 7)
+  if (guess.length < 4 || guess.length > dailyWord.length)
     return NextResponse.json({ valid: false, reason: "length" });
   if (guess === dailyWord)
     return NextResponse.json({ valid: false, reason: "daily_word_disallowed" });
