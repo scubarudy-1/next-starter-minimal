@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-// Hardcode WATERMELON for now
-const DAILY_WORD = "watermelon";
+import { getDailyWord } from "@/utils/dailyWord";
+
+const dailyCount = countLetters(DAILY_WORD);
 
 // Helper: count letters
 function countLetters(word: string) {
