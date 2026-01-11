@@ -11,13 +11,11 @@ type Result = {
 function getPointsForLength(len: number) {
   // Your scoring rules: 4–7 letters
   // Adjust these numbers if you want different weights.
-  const table: Record<number, number> = {
-    4: 1,
-    5: 2,
-    6: 3,
-    7: 5,
-  };
-  return table[len] ?? 0;
+  if (len < 4) return 0;
+  if (len === 4) return 1;
+  if (len === 5) return 2;
+  if (len === 6) return 3;
+  return 5; // 7 and above
 }
 
 function normalizeGuess(s: string) {
