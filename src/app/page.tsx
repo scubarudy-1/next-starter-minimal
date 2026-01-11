@@ -2,7 +2,14 @@ import Game from "./Game";
 import { getDailyWord } from "@/utils/dailyWord";
 
 export default function Page() {
-  const dailyWord = getDailyWord().toUpperCase();
+  const dailyWord = getDailyWord();
 
-  return <Game dailyWord={dailyWord} />;
+  return (
+    <>
+      <p style={{ padding: "1rem", fontFamily: "Arial" }}>
+        <em>SERVER dailyWord = {dailyWord}</em>
+      </p>
+      <Game dailyWord={dailyWord.toUpperCase()} />
+    </>
+  );
 }
