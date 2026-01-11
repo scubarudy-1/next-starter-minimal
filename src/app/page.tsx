@@ -1,5 +1,5 @@
 import Game from "./game";
-import { getDailyWord } from "@/utils/dailyWord";
+import { getDailyWord } from "../utils/dailyWord";
 
 export default function Page() {
   const dailyWord = getDailyWord();
