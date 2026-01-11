@@ -103,9 +103,18 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         return;
       }
 
-      const data = (await res.json()) as { valid?: boolean };
+     const data = (await res.json()) as {
+  valid?: boolean;
+  reason?: string;
+  };
 
-      const isValid = !!data.valid;
+      const isValid = !!data.valid; 
+      
+      if (!isValid) {
+        setError(data.reason ?? "invalid");
+        return;
+      }
+      
       const points = isValid ? getPointsForLength(trimmed.length) : 0;
 
       setResults((prev) => [...prev, { word: trimmed, valid: isValid, points }]);
