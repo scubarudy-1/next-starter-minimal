@@ -1,12 +1,22 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import words from "an-array-of-english-words";
 
 const OUT = path.join(process.cwd(), "src", "data", "dictionary.txt");
 
 // Tune these:
 const MIN_LEN = 4;
 const MAX_LEN = 25;
+
+// Read the JSON file from the installed package instead of importing it
+const jsonPath = path.join(
+  process.cwd(),
+  "node_modules",
+  "an-array-of-english-words",
+  "index.json"
+);
+
+const raw = await readFile(jsonPath, "utf8");
+const words = JSON.parse(raw);
 
 const filtered = Array.from(
   new Set(
