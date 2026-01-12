@@ -5,6 +5,8 @@ import { readFile } from "fs/promises";
 import { getDailyWord } from "../../../utils/dailyWord";
 import wordListPathImport from "word-list";
 
+// Some builds expose this as default export, others as a direct string.
+// This makes it robust.
 const wordListPath =
   (wordListPathImport as unknown as { default?: string }).default ??
   (wordListPathImport as unknown as string);
@@ -35,6 +37,7 @@ async function getWordsSet(): Promise<Set<string>> {
 }
 
 function passesPluralRule(guess: string, dict: Set<string>) {
+  // Plurals allowed only if singular exists
   if (guess.endsWith("s") && guess.length > 4) {
     const singular = guess.slice(0, -1);
     return dict.has(singular);
@@ -58,8 +61,11 @@ export async function POST(request: Request) {
     const guessRaw = String(body.guess ?? "");
     const guess = guessRaw.trim().toLowerCase();
 
-    const dailyWord = getDailyWord().toLowerCase();
+    // Use the client-provided dailyWord if present to avoid mismatches
+    const dailyWordRaw = String(body.dailyWord ?? "");
+    const dailyWord = (dailyWordRaw || getDailyWord()).trim().toLowerCase();
 
+    // Basic checks
     if (!guess) return NextResponse.json({ valid: false, reason: "empty" });
     if (!/^[a-z]+$/.test(guess))
       return NextResponse.json({ valid: false, reason: "nonalpha" });
@@ -70,11 +76,15 @@ export async function POST(request: Request) {
     if (!lettersFit(guess, dailyWord))
       return NextResponse.json({ valid: false, reason: "letters_dont_fit" });
 
+    // Dictionary checks
     const dict = await getWordsSet();
     if (!dict.has(guess))
       return NextResponse.json({ valid: false, reason: "not_in_dictionary" });
     if (!passesPluralRule(guess, dict))
-      return NextResponse.json({ valid: false, reason: "plural_requires_singular" });
+      return NextResponse.json({
+        valid: false,
+        reason: "plural_requires_singular",
+      });
 
     return NextResponse.json({ valid: true });
   } catch (err) {
