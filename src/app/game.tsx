@@ -2,6 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+function friendlyError(reason?: string) {
+  switch (reason) {
+    case "letters_dont_fit":
+      return "That word uses letters not available in today’s word.";
+    case "not_in_dictionary":
+      return "That word isn’t in the dictionary.";
+    case "plural_requires_singular":
+      return "Plural words are only allowed if the singular exists.";
+    case "daily_word_disallowed":
+      return "You can’t use today’s full word.";
+    case "length":
+      return "That word is not a valid length.";
+    default:
+      return "Invalid word.";
+  }
+}
+
 type Result = {
   word: string;
   valid: boolean;
@@ -40,7 +57,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const validWords = useMemo(() => results.filter((r) => r.valid), [results]);
   const invalidWords = useMemo(() => results.filter((r) => !r.valid), [results]);
 
-  // Load saved state when dailyWord changes
   useEffect(() => {
     const key = storageKey(dailyWord);
     const raw = localStorage.getItem(key);
@@ -58,7 +74,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
   }, [dailyWord]);
 
-  // Persist state
   useEffect(() => {
     const key = storageKey(dailyWord);
     localStorage.setItem(key, JSON.stringify({ results }));
@@ -70,7 +85,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     const trimmed = normalizeGuess(guess);
     if (!trimmed) return;
 
-    // Client-side UX checks
     if (trimmed.length < 4) {
       setError("Words must be at least 4 letters.");
       return;
@@ -80,7 +94,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       return;
     }
 
-    // No duplicate guesses
     const alreadyGuessed = results.some((r) => r.word === trimmed);
     if (alreadyGuessed) {
       setGuess("");
@@ -100,17 +113,15 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         reason?: string;
       };
 
-      // Server errors (500, etc.) — show reason if provided
       if (!res.ok) {
-        setError(data.reason ?? "server_error");
+        setError(friendlyError(data.reason ?? "server_error"));
         return;
       }
 
       const isValid = !!data.valid;
 
-      // Show invalid reason, but still record it in the "Invalid" list
       if (!isValid) {
-        setError(data.reason ?? "invalid");
+        setError(friendlyError(data.reason));
       }
 
       const points = isValid ? getPointsForLength(trimmed.length) : 0;
@@ -164,7 +175,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         </div>
       </header>
 
-      {/* ENTER-TO-SUBMIT FORM */}
       <section style={{ marginTop: "1.5rem" }}>
         <form
           onSubmit={(e) => {
