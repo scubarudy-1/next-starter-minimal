@@ -26,271 +26,315 @@ type Result = {
 };
 
 function getPointsForLength(len: number) {
-  // Scoring rules:
   // 4 = 1, 5 = 2, 6 = 3, 7+ = 5
   if (len < 4) return 0;
   if (len === 4) return 1;
   if (len === 5) return 2;
   if (len === 6) return 3;
-  return 5; // 7 and above
+  return 5;
 }
 
-function normalizeGuess(s: string) {
-  return s.trim().toLowerCase();
+function storageKeyForToday() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `wordsinwords:${yyyy}-${mm}-${dd}:results`;
 }
 
-function storageKey(dailyWord: string) {
-  return `words-in-words:v1:${dailyWord.toLowerCase()}`;
+function counts(s: string) {
+  const m = new Map<string, number>();
+  for (const ch of s) m.set(ch, (m.get(ch) ?? 0) + 1);
+  return m;
 }
 
 export default function Game({ dailyWord }: { dailyWord: string }) {
+  const bankLetters = useMemo(() => dailyWord.toLowerCase().split(""), [dailyWord]);
+  const bankCounts = useMemo(() => counts(dailyWord.toLowerCase()), [dailyWord]);
+
   const [guess, setGuess] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const totalScore = useMemo(
+  // NEW: letter bank selection as indices into bankLetters (so duplicates are handled correctly)
+  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
+
+  const pickedWord = useMemo(
+    () => pickedIndices.map((i) => bankLetters[i]).join(""),
+    [pickedIndices, bankLetters]
+  );
+
+  const usedCounts = useMemo(() => counts(pickedWord), [pickedWord]);
+
+  const totalPoints = useMemo(
     () => results.reduce((sum, r) => sum + (r.valid ? r.points : 0), 0),
     [results]
   );
 
-  const validWords = useMemo(() => results.filter((r) => r.valid), [results]);
-  const invalidWords = useMemo(() => results.filter((r) => !r.valid), [results]);
-
+  // Load saved results
   useEffect(() => {
-    const key = storageKey(dailyWord);
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      setResults([]);
-      return;
-    }
-
     try {
-      const parsed = JSON.parse(raw) as { results: Result[] };
-      if (Array.isArray(parsed?.results)) setResults(parsed.results);
-      else setResults([]);
+      const raw = localStorage.getItem(storageKeyForToday());
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setResults(parsed);
     } catch {
-      setResults([]);
+      // ignore
     }
-  }, [dailyWord]);
+  }, []);
 
+  // Save results
   useEffect(() => {
-    const key = storageKey(dailyWord);
-    localStorage.setItem(key, JSON.stringify({ results }));
-  }, [dailyWord, results]);
+    try {
+      localStorage.setItem(storageKeyForToday(), JSON.stringify(results));
+    } catch {
+      // ignore
+    }
+  }, [results]);
 
-  const handleSubmit = async () => {
-    setError(null);
+  // Keep input text in sync with picked tiles, but still allow typing if you want.
+  useEffect(() => {
+    setGuess(pickedWord);
+  }, [pickedWord]);
 
-    const trimmed = normalizeGuess(guess);
+  function clearPick() {
+    setPickedIndices([]);
+  }
+
+  function removeLastPick() {
+    setPickedIndices((prev) => prev.slice(0, -1));
+  }
+
+  function canPickIndex(i: number) {
+    // If already picked that exact tile index, it's not available.
+    if (pickedIndices.includes(i)) return false;
+    return true;
+  }
+
+  function pickIndex(i: number) {
+    if (!canPickIndex(i)) return;
+    setPickedIndices((prev) => [...prev, i]);
+  }
+
+  // Allow typing too, but we’ll reconcile it into pickedIndices only when pressing “Use Typed”
+  // (Keeping it simple: typing is optional. If you want typing to fully drive indices,
+  // we can map typed letters to available indices.)
+  const [typedMode, setTypedMode] = useState(false);
+
+  async function handleSubmit(wordOverride?: string) {
+    const trimmed = (wordOverride ?? guess).trim().toLowerCase();
     if (!trimmed) return;
 
-    if (trimmed.length < 4) {
-      setError("Words must be at least 4 letters.");
-      return;
-    }
-    if (trimmed.length > dailyWord.length) {
-      setError("That word is longer than today’s word.");
-      return;
-    }
+    setError(null);
 
+    // No duplicate guesses
     const alreadyGuessed = results.some((r) => r.word === trimmed);
     if (alreadyGuessed) {
       setGuess("");
+      clearPick();
       return;
     }
 
-    setIsChecking(true);
+    setIsSubmitting(true);
     try {
       const res = await fetch("/api/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guess: trimmed, dailyWord }),
+        body: JSON.stringify({ guess: trimmed }),
       });
 
-      const data = (await res.json().catch(() => ({}))) as {
-        valid?: boolean;
-        reason?: string;
-      };
+      const data: { valid?: boolean; reason?: string } = await res.json();
 
-      if (!res.ok) {
-        setError(friendlyError(data.reason ?? "server_error"));
-        return;
-      }
+      const valid = !!data.valid;
+      const points = valid ? getPointsForLength(trimmed.length) : 0;
 
-      const isValid = !!data.valid;
+      setResults((prev) => [...prev, { word: trimmed, valid, points }]);
 
-      if (!isValid) {
-        setError(friendlyError(data.reason));
-      }
+      if (!valid) setError(friendlyError(data.reason));
 
-      const points = isValid ? getPointsForLength(trimmed.length) : 0;
-
-      setResults((prev) => [...prev, { word: trimmed, valid: isValid, points }]);
       setGuess("");
+      clearPick();
     } catch {
-      setError("Network error checking word.");
+      setError("Something went wrong. Please try again.");
     } finally {
-      setIsChecking(false);
+      setIsSubmitting(false);
     }
-  };
+  }
 
-  const resetToday = () => {
-    setResults([]);
-    setGuess("");
-    setError(null);
-    localStorage.removeItem(storageKey(dailyWord));
-  };
+  // Keyboard shortcuts for tile-built word
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // If user is typing in the input, don't hijack normal typing unless they want tile-mode only.
+      // (We still allow Enter/Backspace to work when input is focused.)
+      if (e.key === "Backspace") {
+        // If there are picked tiles, backspace removes last picked tile
+        if (pickedIndices.length > 0) {
+          e.preventDefault();
+          removeLastPick();
+        }
+      } else if (e.key === "Enter") {
+        if (pickedWord.length > 0) {
+          e.preventDefault();
+          handleSubmit(pickedWord);
+        }
+      } else if (/^[a-zA-Z]$/.test(e.key)) {
+        // Optional: let single-letter keypress pick the first available matching tile
+        const ch = e.key.toLowerCase();
+        const idx = bankLetters.findIndex((l, i) => l === ch && !pickedIndices.includes(i));
+        if (idx !== -1) {
+          e.preventDefault();
+          pickIndex(idx);
+        }
+      } else if (e.key === "Escape") {
+        clearPick();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedIndices, pickedWord, bankLetters]);
+
+  const isTileUsed = (i: number) => pickedIndices.includes(i);
 
   return (
-    <main
-      style={{
-        padding: "2rem",
-        fontFamily: "Arial, sans-serif",
-        maxWidth: 720,
-        margin: "0 auto",
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: "1rem",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0 }}>Words in Words</h1>
-          <p style={{ margin: "0.25rem 0 0", opacity: 0.8 }}>
-            Today’s word:{" "}
-            <strong style={{ letterSpacing: 1 }}>{dailyWord.toUpperCase()}</strong>
-          </p>
-        </div>
+    <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif", maxWidth: 720 }}>
+      <h1 style={{ marginBottom: "0.5rem" }}>Words in Words</h1>
+      <p style={{ marginTop: 0 }}>
+        Today’s word: <b>{dailyWord}</b>
+      </p>
 
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1 }}>
-            {totalScore}
-          </div>
-          <div style={{ opacity: 0.8, marginTop: 2 }}>score</div>
-        </div>
-      </header>
-
-      <section style={{ marginTop: "1.5rem" }}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-          style={{ display: "flex", gap: "0.5rem" }}
-        >
+      {/* Guess / controls */}
+      <div style={{ marginTop: "1rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <input
             value={guess}
-            onChange={(e) => setGuess(e.target.value)}
-            placeholder="Enter a word (4+ letters)"
-            style={{
-              flex: 1,
-              padding: "0.75rem",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              fontSize: "1rem",
+            onChange={(e) => {
+              setTypedMode(true);
+              setGuess(e.target.value);
             }}
-            disabled={isChecking}
-            autoFocus
-            inputMode="text"
-            enterKeyHint="send"
+            placeholder="Click letters below (or type)"
+            style={{
+              padding: "0.6rem 0.75rem",
+              fontSize: "1rem",
+              width: "260px",
+            }}
+            disabled={isSubmitting}
           />
 
           <button
-            type="submit"
-            disabled={isChecking}
-            style={{
-              padding: "0.75rem 1rem",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              background: "white",
-              cursor: isChecking ? "not-allowed" : "pointer",
-              fontWeight: 600,
-            }}
+            onClick={() => handleSubmit(pickedWord || guess)}
+            disabled={isSubmitting}
+            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
           >
-            {isChecking ? "Checking..." : "Submit"}
+            {isSubmitting ? "Checking..." : "Submit"}
           </button>
 
           <button
-            type="button"
-            onClick={resetToday}
-            style={{
-              padding: "0.75rem 1rem",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              background: "white",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-            title="Clears your guesses for today"
+            onClick={removeLastPick}
+            disabled={isSubmitting || pickedIndices.length === 0}
+            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
+            title="Backspace"
           >
-            Reset
+            Back
           </button>
-        </form>
-      </section>
 
-      {error && <p style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</p>}
-
-      <section
-        style={{
-          marginTop: "1.5rem",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "1rem",
-        }}
-      >
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
-          <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
-            Valid ({validWords.length})
-          </h2>
-
-          {validWords.length === 0 ? (
-            <p style={{ opacity: 0.7, margin: 0 }}>No valid words yet.</p>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-              {validWords
-                .slice()
-                .sort((a, b) => b.points - a.points || a.word.localeCompare(b.word))
-                .map((r) => (
-                  <li key={r.word} style={{ marginBottom: 6 }}>
-                    <strong>{r.word}</strong>{" "}
-                    <span style={{ opacity: 0.8 }}>
-                      ({r.word.length} letters · +{r.points})
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          )}
+          <button
+            onClick={clearPick}
+            disabled={isSubmitting || pickedIndices.length === 0}
+            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
+            title="Escape"
+          >
+            Clear
+          </button>
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
-          <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
-            Invalid ({invalidWords.length})
-          </h2>
+        {error && <div style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</div>}
+      </div>
 
-          {invalidWords.length === 0 ? (
-            <p style={{ opacity: 0.7, margin: 0 }}>No invalid guesses.</p>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-              {invalidWords.map((r) => (
-                <li key={r.word} style={{ marginBottom: 6 }}>
-                  {r.word}
-                </li>
-              ))}
-            </ul>
-          )}
+      {/* Letter Bank */}
+      <section style={{ marginTop: "1.5rem" }}>
+        <div style={{ marginBottom: "0.5rem" }}>
+          <b>Letter bank</b>{" "}
+          <span style={{ color: "#555" }}>
+            (click tiles • type letters • Backspace removes • Enter submits • Esc clears)
+          </span>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {bankLetters.map((ch, i) => {
+            const used = isTileUsed(i);
+            return (
+              <button
+                key={`${ch}-${i}`}
+                onClick={() => pickIndex(i)}
+                disabled={used || isSubmitting}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  background: used ? "#eee" : "white",
+                  cursor: used ? "not-allowed" : "pointer",
+                  fontSize: "1.1rem",
+                  fontWeight: 700,
+                  opacity: used ? 0.55 : 1,
+                }}
+                aria-label={`Letter ${ch}${used ? " used" : ""}`}
+              >
+                {ch.toUpperCase()}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* A small “picked word” preview (nice for clarity) */}
+        <div style={{ marginTop: "0.75rem", color: "#333" }}>
+          <b>Selected:</b>{" "}
+          <span style={{ letterSpacing: "0.06em" }}>
+            {pickedWord ? pickedWord.toUpperCase() : "—"}
+          </span>
+        </div>
+
+        {/* Optional: show letter usage counts (helps debugging/feel-good UI) */}
+        <div style={{ marginTop: "0.5rem", color: "#666", fontSize: "0.95rem" }}>
+          {Array.from(bankCounts.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([ch, total]) => {
+              const used = usedCounts.get(ch) ?? 0;
+              return (
+                <span key={ch} style={{ marginRight: "0.75rem" }}>
+                  {ch.toUpperCase()}: {used}/{total}
+                </span>
+              );
+            })}
         </div>
       </section>
 
-      <footer style={{ marginTop: "1.5rem", opacity: 0.75 }}>
-        <p style={{ margin: 0 }}>
-          Scoring: 4 letters = 1, 5 = 2, 6 = 3, 7+ = 5.
-        </p>
-      </footer>
+      {/* Score + results */}
+      <div style={{ marginTop: "1.5rem" }}>
+        <div style={{ marginBottom: "0.5rem" }}>
+          <b>Total points:</b> {totalPoints}
+        </div>
+
+        <div style={{ marginBottom: "0.35rem" }}>
+          <b>Guesses ({results.length}):</b>
+        </div>
+
+        <ul style={{ paddingLeft: "1.25rem", marginTop: 0 }}>
+          {results.map((r) => (
+            <li key={r.word} style={{ marginBottom: "0.25rem" }}>
+              <span style={{ fontWeight: 600 }}>{r.word}</span>{" "}
+              {r.valid ? (
+                <span style={{ color: "green" }}>✓ +{r.points}</span>
+              ) : (
+                <span style={{ color: "crimson" }}>✗</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </main>
   );
 }
