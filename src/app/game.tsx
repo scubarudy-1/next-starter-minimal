@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 type Result = {
   word: string;
   valid: boolean;
-  points: number; // 0 if invalid or unscored length
+  points: number;
 };
 
 function getPointsForLength(len: number) {
-  // Your scoring rules: 4–7 letters
-  // Adjust these numbers if you want different weights.
+  // Scoring rules:
+  // 4 = 1, 5 = 2, 6 = 3, 7+ = 5
   if (len < 4) return 0;
   if (len === 4) return 1;
   if (len === 5) return 2;
@@ -32,17 +32,15 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
-  // ----- Derived values
   const totalScore = useMemo(
     () => results.reduce((sum, r) => sum + (r.valid ? r.points : 0), 0),
     [results]
   );
 
   const validWords = useMemo(() => results.filter((r) => r.valid), [results]);
-
   const invalidWords = useMemo(() => results.filter((r) => !r.valid), [results]);
 
-  // ----- Load saved state when dailyWord changes
+  // Load saved state when dailyWord changes
   useEffect(() => {
     const key = storageKey(dailyWord);
     const raw = localStorage.getItem(key);
@@ -60,7 +58,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
   }, [dailyWord]);
 
-  // ----- Persist state
+  // Persist state
   useEffect(() => {
     const key = storageKey(dailyWord);
     localStorage.setItem(key, JSON.stringify({ results }));
@@ -70,10 +68,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     setError(null);
 
     const trimmed = normalizeGuess(guess);
-
     if (!trimmed) return;
 
-    // Basic length rule (since scoring starts at 4, this keeps UX clean)
+    // Client-side UX checks
     if (trimmed.length < 4) {
       setError("Words must be at least 4 letters.");
       return;
@@ -83,7 +80,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       return;
     }
 
-    // No duplicate guesses (case-insensitive)
+    // No duplicate guesses
     const alreadyGuessed = results.some((r) => r.word === trimmed);
     if (alreadyGuessed) {
       setGuess("");
@@ -98,23 +95,24 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         body: JSON.stringify({ guess: trimmed, dailyWord }),
       });
 
+      const data = (await res.json().catch(() => ({}))) as {
+        valid?: boolean;
+        reason?: string;
+      };
+
+      // Server errors (500, etc.) — show reason if provided
       if (!res.ok) {
-        setError("Server error checking word.");
+        setError(data.reason ?? "server_error");
         return;
       }
 
-     const data = (await res.json()) as {
-  valid?: boolean;
-  reason?: string;
-  };
+      const isValid = !!data.valid;
 
-      const isValid = !!data.valid; 
-      
+      // Show invalid reason, but still record it in the "Invalid" list
       if (!isValid) {
         setError(data.reason ?? "invalid");
-        return;
       }
-      
+
       const points = isValid ? getPointsForLength(trimmed.length) : 0;
 
       setResults((prev) => [...prev, { word: trimmed, valid: isValid, points }]);
@@ -154,9 +152,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           <h1 style={{ margin: 0 }}>Words in Words</h1>
           <p style={{ margin: "0.25rem 0 0", opacity: 0.8 }}>
             Today’s word:{" "}
-            <strong style={{ letterSpacing: 1 }}>
-              {dailyWord.toUpperCase()}
-            </strong>
+            <strong style={{ letterSpacing: 1 }}>{dailyWord.toUpperCase()}</strong>
           </p>
         </div>
 
@@ -180,7 +176,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           <input
             value={guess}
             onChange={(e) => setGuess(e.target.value)}
-            placeholder="Enter a word (4–7 letters score)"
+            placeholder="Enter a word (4+ letters)"
             style={{
               flex: 1,
               padding: "0.75rem",
@@ -227,9 +223,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         </form>
       </section>
 
-      {error && (
-        <p style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</p>
-      )}
+      {error && <p style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</p>}
 
       <section
         style={{
@@ -239,13 +233,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           gap: "1rem",
         }}
       >
-        <div
-          style={{
-            border: "1px solid #eee",
-            borderRadius: 12,
-            padding: "1rem",
-          }}
-        >
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
           <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
             Valid ({validWords.length})
           </h2>
@@ -269,13 +257,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           )}
         </div>
 
-        <div
-          style={{
-            border: "1px solid #eee",
-            borderRadius: 12,
-            padding: "1rem",
-          }}
-        >
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: "1rem" }}>
           <h2 style={{ marginTop: 0, marginBottom: "0.75rem" }}>
             Invalid ({invalidWords.length})
           </h2>
@@ -296,7 +278,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
       <footer style={{ marginTop: "1.5rem", opacity: 0.75 }}>
         <p style={{ margin: 0 }}>
-          Scoring: 4 letters = 1, 5 = 2, 6 = 3, 7 = 5 (adjust in code anytime).
+          Scoring: 4 letters = 1, 5 = 2, 6 = 3, 7+ = 5.
         </p>
       </footer>
     </main>
