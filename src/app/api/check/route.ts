@@ -2,14 +2,8 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
+import path from "path";
 import { getDailyWord } from "../../../utils/dailyWord";
-import wordListPathImport from "word-list";
-
-// Some builds expose this as default export, others as a direct string.
-// This makes it robust.
-const wordListPath =
-  (wordListPathImport as unknown as { default?: string }).default ??
-  (wordListPathImport as unknown as string);
 
 // --- letter counting ---
 function countLetters(word: string) {
@@ -25,7 +19,8 @@ let WORDS: Set<string> | null = null;
 async function getWordsSet(): Promise<Set<string>> {
   if (WORDS) return WORDS;
 
-  const raw = await readFile(wordListPath, "utf8");
+  const filePath = path.join(process.cwd(), "src", "data", "dictionary.txt");
+  const raw = await readFile(filePath, "utf8");
 
   const words = raw
     .split(/\r?\n/)
@@ -61,7 +56,7 @@ export async function POST(request: Request) {
     const guessRaw = String(body.guess ?? "");
     const guess = guessRaw.trim().toLowerCase();
 
-    // Use the client-provided dailyWord if present to avoid mismatches
+    // Prefer the client’s dailyWord if provided (prevents any mismatch)
     const dailyWordRaw = String(body.dailyWord ?? "");
     const dailyWord = (dailyWordRaw || getDailyWord()).trim().toLowerCase();
 
