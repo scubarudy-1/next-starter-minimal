@@ -1,4 +1,6 @@
 // src/lib/dailyWord.ts
+import "server-only";
+
 import { readFileSync } from "fs";
 import path from "path";
 
