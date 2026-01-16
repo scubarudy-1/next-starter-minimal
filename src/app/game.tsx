@@ -71,6 +71,31 @@ function yesterdayKey(todayKey: string) {
   return localDayKey(dt);
 }
 
+// -------- 8PM local rollover countdown --------
+function nextRolloverLocal8pm(now = new Date()) {
+  const d = new Date(now);
+
+  // today at 20:00
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 20, 0, 0, 0);
+
+  // if it's already 8pm or later, next rollover is tomorrow 8pm
+  if (d.getTime() >= next.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  return next;
+}
+
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
 // -------- Daily completion + streaks --------
 const DAILY_GOAL_POINTS = 20;
 const COMPLETED_PREFIX = "wordsinwords:completed:v1:"; // + YYYY-MM-DD
@@ -111,6 +136,20 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Countdown tick
+  const [nowTick, setNowTick] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const nextRollover = useMemo(() => nextRolloverLocal8pm(nowTick), [nowTick]);
+  const msToNext = nextRollover.getTime() - nowTick.getTime();
+  const countdownText = useMemo(() => formatDuration(msToNext), [msToNext]);
+  const nextAtText = useMemo(() => {
+    return nextRollover.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }, [nextRollover]);
+
   function focusInput() {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
@@ -123,8 +162,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const normalizedGuess = useMemo(() => guess.trim().toLowerCase(), [guess]);
   const guessCounts = useMemo(() => counts(normalizedGuess), [normalizedGuess]);
 
-  // ✅ NEW: per-tile used state (handles duplicates correctly)
-  // If guess uses 1 "a" and the bank has 2 "a" tiles, only ONE "a" tile grays out.
+  // ✅ Per-tile used state (handles duplicates correctly)
   const usedTiles = useMemo(() => {
     const usedSoFar = new Map<string, number>();
     const out: boolean[] = new Array(bankLetters.length).fill(false);
@@ -281,7 +319,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     focusInput();
   }
 
-  // Keep this for click-adding safety (though tiles now show per-index availability)
   function canUseLetter(ch: string) {
     const total = bankCounts.get(ch) ?? 0;
     const used = guessCounts.get(ch) ?? 0;
@@ -422,6 +459,11 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
               <div style={{ marginTop: "0.25rem", color: UI.subtext }}>
                 Today’s word:{" "}
                 <span style={{ fontWeight: 800, color: UI.text }}>{dailyWord.toUpperCase()}</span>
+              </div>
+
+              <div style={{ marginTop: "0.25rem", color: UI.subtext, fontSize: "0.95rem" }}>
+                Next word at <b style={{ color: UI.text }}>{nextAtText}</b> • in{" "}
+                <b style={{ color: UI.text }}>{countdownText}</b>
               </div>
 
               {/* Daily goal */}
@@ -579,7 +621,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
             <div style={{ marginTop: "0.65rem", display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
               {bankLetters.map((ch, i) => {
-                const available = !usedTiles[i]; // ✅ per-tile availability
+                const available = !usedTiles[i]; // per-tile availability
                 return (
                   <button
                     key={`${ch}-${i}`}
