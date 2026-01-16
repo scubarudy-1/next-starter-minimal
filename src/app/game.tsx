@@ -14,6 +14,12 @@ function friendlyError(reason?: string) {
       return "You can’t use today’s full word.";
     case "length":
       return "That word is not a valid length.";
+    case "empty":
+      return "Type a word first.";
+    case "nonalpha":
+      return "Only letters are allowed.";
+    case "server_exception":
+      return "Server error. Please try again.";
     default:
       return "Invalid word.";
   }
@@ -44,7 +50,10 @@ function storageKeyForToday() {
 
 function counts(s: string) {
   const m = new Map<string, number>();
-  for (const ch of s) m.set(ch, (m.get(ch) ?? 0) + 1);
+  for (const ch of s) {
+    if (!/^[a-z]$/.test(ch)) continue;
+    m.set(ch, (m.get(ch) ?? 0) + 1);
+  }
   return m;
 }
 
@@ -57,15 +66,16 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // NEW: letter bank selection as indices into bankLetters (so duplicates are handled correctly)
-  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
+  const normalizedGuess = useMemo(() => guess.trim().toLowerCase(), [guess]);
+  const guessCounts = useMemo(() => counts(normalizedGuess), [normalizedGuess]);
 
-  const pickedWord = useMemo(
-    () => pickedIndices.map((i) => bankLetters[i]).join(""),
-    [pickedIndices, bankLetters]
-  );
-
-  const usedCounts = useMemo(() => counts(pickedWord), [pickedWord]);
+  // Derived: does the typed word fit in the letter bank?
+  const fitsBank = useMemo(() => {
+    for (const [ch, n] of guessCounts.entries()) {
+      if ((bankCounts.get(ch) ?? 0) < n) return false;
+    }
+    return true;
+  }, [guessCounts, bankCounts]);
 
   const totalPoints = useMemo(
     () => results.reduce((sum, r) => sum + (r.valid ? r.points : 0), 0),
@@ -93,34 +103,24 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
   }, [results]);
 
-  // Keep input text in sync with picked tiles, but still allow typing if you want.
-  useEffect(() => {
-    setGuess(pickedWord);
-  }, [pickedWord]);
-
-  function clearPick() {
-    setPickedIndices([]);
+  function clearGuess() {
+    setGuess("");
   }
 
-  function removeLastPick() {
-    setPickedIndices((prev) => prev.slice(0, -1));
+  function canUseLetter(ch: string) {
+    const total = bankCounts.get(ch) ?? 0;
+    const used = guessCounts.get(ch) ?? 0;
+    return used < total;
   }
 
-  function canPickIndex(i: number) {
-    // If already picked that exact tile index, it's not available.
-    if (pickedIndices.includes(i)) return false;
-    return true;
+  function appendLetter(ch: string) {
+    if (!canUseLetter(ch)) return;
+    setGuess((prev) => (prev + ch).toLowerCase());
   }
 
-  function pickIndex(i: number) {
-    if (!canPickIndex(i)) return;
-    setPickedIndices((prev) => [...prev, i]);
+  function removeLastChar() {
+    setGuess((prev) => prev.slice(0, -1));
   }
-
-  // Allow typing too, but we’ll reconcile it into pickedIndices only when pressing “Use Typed”
-  // (Keeping it simple: typing is optional. If you want typing to fully drive indices,
-  // we can map typed letters to available indices.)
-  const [typedMode, setTypedMode] = useState(false);
 
   async function handleSubmit(wordOverride?: string) {
     const trimmed = (wordOverride ?? guess).trim().toLowerCase();
@@ -131,33 +131,31 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     // No duplicate guesses
     const alreadyGuessed = results.some((r) => r.word === trimmed);
     if (alreadyGuessed) {
-      setGuess("");
-      clearPick();
+      clearGuess();
       return;
     }
 
     setIsSubmitting(true);
-try {
-  const res = await fetch("/api/check", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      guess: trimmed,
-      dailyWord, // ✅ makes API validate against the same word UI shows
-    }),
-  });
+    try {
+      const res = await fetch("/api/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guess: trimmed,
+          dailyWord, // critical: keeps server validation aligned with UI word
+        }),
+      });
 
-  const data: { valid?: boolean; reason?: string } = await res.json();
+      const data: { valid?: boolean; reason?: string } = await res.json();
 
-  const valid = !!data.valid;
-  const points = valid ? getPointsForLength(trimmed.length) : 0;
+      const valid = !!data.valid;
+      const points = valid ? getPointsForLength(trimmed.length) : 0;
 
       setResults((prev) => [...prev, { word: trimmed, valid, points }]);
 
       if (!valid) setError(friendlyError(data.reason));
 
-      setGuess("");
-      clearPick();
+      clearGuess();
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -165,44 +163,16 @@ try {
     }
   }
 
-  // Keyboard shortcuts for tile-built word
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      // If user is typing in the input, don't hijack normal typing unless they want tile-mode only.
-      // (We still allow Enter/Backspace to work when input is focused.)
-      if (e.key === "Backspace") {
-        // If there are picked tiles, backspace removes last picked tile
-        if (pickedIndices.length > 0) {
-          e.preventDefault();
-          removeLastPick();
-        }
-      } else if (e.key === "Enter") {
-        if (pickedWord.length > 0) {
-          e.preventDefault();
-          handleSubmit(pickedWord);
-        }
-      } else if (/^[a-zA-Z]$/.test(e.key)) {
-        // Optional: let single-letter keypress pick the first available matching tile
-        const ch = e.key.toLowerCase();
-        const idx = bankLetters.findIndex((l, i) => l === ch && !pickedIndices.includes(i));
-        if (idx !== -1) {
-          e.preventDefault();
-          pickIndex(idx);
-        }
-      } else if (e.key === "Escape") {
-        clearPick();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickedIndices, pickedWord, bankLetters]);
-
-  const isTileUsed = (i: number) => pickedIndices.includes(i);
+  const submitDisabled =
+    isSubmitting ||
+    normalizedGuess.length === 0 ||
+    normalizedGuess.length < 4 ||
+    normalizedGuess.length > dailyWord.length ||
+    !/^[a-z]+$/.test(normalizedGuess) ||
+    !fitsBank;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif", maxWidth: 720 }}>
+    <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif", maxWidth: 820 }}>
       <h1 style={{ marginBottom: "0.5rem" }}>Words in Words</h1>
       <p style={{ marginTop: 0 }}>
         Today’s word: <b>{dailyWord}</b>
@@ -213,30 +183,39 @@ try {
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <input
             value={guess}
-            onChange={(e) => {
-              setTypedMode(true);
-              setGuess(e.target.value);
+            onChange={(e) => setGuess(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSubmit(guess);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                clearGuess();
+              }
             }}
-            placeholder="Click letters below (or type)"
+            placeholder="Type a word (or click letters below)"
             style={{
               padding: "0.6rem 0.75rem",
               fontSize: "1rem",
-              width: "260px",
+              width: "300px",
             }}
             disabled={isSubmitting}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
 
           <button
-            onClick={() => handleSubmit(pickedWord || guess)}
-            disabled={isSubmitting}
+            onClick={() => handleSubmit(guess)}
+            disabled={submitDisabled}
             style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
           >
             {isSubmitting ? "Checking..." : "Submit"}
           </button>
 
           <button
-            onClick={removeLastPick}
-            disabled={isSubmitting || pickedIndices.length === 0}
+            onClick={removeLastChar}
+            disabled={isSubmitting || guess.length === 0}
             style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
             title="Backspace"
           >
@@ -244,14 +223,21 @@ try {
           </button>
 
           <button
-            onClick={clearPick}
-            disabled={isSubmitting || pickedIndices.length === 0}
+            onClick={clearGuess}
+            disabled={isSubmitting || guess.length === 0}
             style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
             title="Escape"
           >
             Clear
           </button>
         </div>
+
+        {/* Live “bank fit” feedback (Metazooa-ish) */}
+        {normalizedGuess.length > 0 && !fitsBank && (
+          <div style={{ marginTop: "0.5rem", color: "crimson" }}>
+            Uses letters not available in today’s word.
+          </div>
+        )}
 
         {error && <div style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</div>}
       </div>
@@ -260,31 +246,30 @@ try {
       <section style={{ marginTop: "1.5rem" }}>
         <div style={{ marginBottom: "0.5rem" }}>
           <b>Letter bank</b>{" "}
-          <span style={{ color: "#555" }}>
-            (click tiles • type letters • Backspace removes • Enter submits • Esc clears)
-          </span>
+          <span style={{ color: "#555" }}>(click letters to add • typing is primary)</span>
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {bankLetters.map((ch, i) => {
-            const used = isTileUsed(i);
+            const available = canUseLetter(ch);
+
             return (
               <button
                 key={`${ch}-${i}`}
-                onClick={() => pickIndex(i)}
-                disabled={used || isSubmitting}
+                onClick={() => appendLetter(ch)}
+                disabled={!available || isSubmitting}
                 style={{
                   width: 44,
                   height: 44,
                   borderRadius: 10,
                   border: "1px solid #ccc",
-                  background: used ? "#eee" : "white",
-                  cursor: used ? "not-allowed" : "pointer",
+                  background: available ? "white" : "#eee",
+                  cursor: available ? "pointer" : "not-allowed",
                   fontSize: "1.1rem",
                   fontWeight: 700,
-                  opacity: used ? 0.55 : 1,
+                  opacity: available ? 1 : 0.55,
                 }}
-                aria-label={`Letter ${ch}${used ? " used" : ""}`}
+                aria-label={`Letter ${ch}${available ? "" : " unavailable"}`}
               >
                 {ch.toUpperCase()}
               </button>
@@ -292,20 +277,12 @@ try {
           })}
         </div>
 
-        {/* A small “picked word” preview (nice for clarity) */}
-        <div style={{ marginTop: "0.75rem", color: "#333" }}>
-          <b>Selected:</b>{" "}
-          <span style={{ letterSpacing: "0.06em" }}>
-            {pickedWord ? pickedWord.toUpperCase() : "—"}
-          </span>
-        </div>
-
-        {/* Optional: show letter usage counts (helps debugging/feel-good UI) */}
-        <div style={{ marginTop: "0.5rem", color: "#666", fontSize: "0.95rem" }}>
+        {/* Letter usage counts */}
+        <div style={{ marginTop: "0.6rem", color: "#666", fontSize: "0.95rem" }}>
           {Array.from(bankCounts.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
             .map(([ch, total]) => {
-              const used = usedCounts.get(ch) ?? 0;
+              const used = guessCounts.get(ch) ?? 0;
               return (
                 <span key={ch} style={{ marginRight: "0.75rem" }}>
                   {ch.toUpperCase()}: {used}/{total}
