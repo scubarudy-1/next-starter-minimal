@@ -429,8 +429,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   // ---- Share text ----
   function buildShareText() {
     const goalMark = completedToday ? "✅" : "❌";
-    const url =
-      typeof window !== "undefined" ? window.location.origin : "https://your-site.com";
+    const url = typeof window !== "undefined" ? window.location.origin : "https://your-site.com";
 
     // Minimal, no spoilers
     return [
@@ -574,10 +573,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
   // History helpers (GAME DAY aligned)
   const yesterday = useMemo(() => yesterdayKeyFromGameDayKey(todayKey), [todayKey]);
-  const yesterdaySummary = useMemo(
-    () => history.find((h) => h.key === yesterday) ?? null,
-    [history, yesterday]
-  );
+  const yesterdaySummary = useMemo(() => history.find((h) => h.key === yesterday) ?? null, [history, yesterday]);
 
   return (
     <main
@@ -605,13 +601,10 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
             <div>
-              <div style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.02em" }}>
-                Words in Words
-              </div>
+              <div style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.02em" }}>Words in Words</div>
 
               <div style={{ marginTop: "0.25rem", color: UI.subtext }}>
-                Today’s word:{" "}
-                <span style={{ fontWeight: 800, color: UI.text }}>{dailyWord.toUpperCase()}</span>
+                Today’s word: <span style={{ fontWeight: 800, color: UI.text }}>{dailyWord.toUpperCase()}</span>
               </div>
 
               <div style={{ marginTop: "0.25rem", color: UI.subtext, fontSize: "0.95rem" }}>
@@ -621,14 +614,14 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
               {/* Retention micro-copy */}
               <div style={{ marginTop: "0.15rem", color: UI.subtext, fontSize: "0.92rem" }}>
-                Come back tonight to keep your streak 🔥
+                New word drops at 8 PM — don’t break your streak 🔥
               </div>
 
               {/* Daily goal */}
               <div style={{ marginTop: "0.75rem" }}>
                 <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ color: UI.subtext }}>
-                    <b style={{ color: UI.text }}>Daily goal:</b> {goalProgress}/{DAILY_GOAL_POINTS} pts
+                    <b style={{ color: UI.text }}>Today’s goal:</b> {goalProgress}/{DAILY_GOAL_POINTS} pts
                   </div>
 
                   {completedToday && (
@@ -664,9 +657,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                     style={{
                       height: "100%",
                       width: `${goalPct}%`,
-                      background: completedToday
-                        ? "rgba(22,101,52,0.55)"
-                        : "rgba(0,0,0,0.18)",
+                      background: completedToday ? "rgba(22,101,52,0.55)" : "rgba(0,0,0,0.18)",
                       transition: "width 200ms ease",
                     }}
                   />
@@ -698,7 +689,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                         boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
                       }}
                     >
-                      📋 Share
+                      📋 Share results
                     </button>
                   </div>
                 )}
@@ -707,8 +698,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
             <div style={{ textAlign: "right", color: UI.subtext }}>
               <div style={{ fontWeight: 900, color: UI.text }}>
-                🔥 {streak.current}{" "}
-                <span style={{ fontWeight: 700, color: UI.subtext }}>streak</span>
+                🔥 {streak.current} <span style={{ fontWeight: 700, color: UI.subtext }}>streak</span>
               </div>
               <div style={{ fontSize: "0.95rem" }}>
                 Best: <b style={{ color: UI.text }}>{streak.best}</b>
@@ -731,12 +721,12 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                   boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
                 }}
               >
-                📋 Copy results
+                📋 Share results
               </button>
 
               {copyStatus === "ok" && (
                 <div style={{ marginTop: "0.35rem", color: UI.ok, fontWeight: 900, fontSize: "0.95rem" }}>
-                  Copied!
+                  Results copied!
                 </div>
               )}
               {copyStatus === "fail" && (
@@ -748,7 +738,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                     fontSize: "0.95rem",
                   }}
                 >
-                  Couldn’t copy—try again.
+                  Couldn’t copy. Try again.
                 </div>
               )}
             </div>
@@ -812,13 +802,12 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
             {/* Live status row */}
             <div style={{ marginTop: "0.85rem", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
               <div style={{ color: UI.subtext }}>
-                <b style={{ color: UI.text }}>Length:</b>{" "}
-                {normalizedGuess.length}/{dailyWord.length}
+                <b style={{ color: UI.text }}>Length:</b> {normalizedGuess.length}/{dailyWord.length}
               </div>
               <div style={{ color: UI.subtext }}>
-                <b style={{ color: UI.text }}>Fits bank:</b>{" "}
+                <b style={{ color: UI.text }}>Uses letters:</b>{" "}
                 <span style={{ color: normalizedGuess ? (fitsBank ? UI.ok : UI.danger) : UI.subtext }}>
-                  {normalizedGuess ? (fitsBank ? "Yes" : "No") : "—"}
+                  {normalizedGuess ? (fitsBank ? "Valid" : "Too many") : "—"}
                 </span>
               </div>
               <div style={{ color: UI.subtext }}>
@@ -844,9 +833,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           <section style={{ marginTop: "1.35rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
               <div style={{ fontWeight: 900 }}>Letter bank</div>
-              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>
-                Click letters to add (typing is primary)
-              </div>
+              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>Click letters to add (typing is primary)</div>
             </div>
 
             <div style={{ marginTop: "0.65rem", display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
@@ -897,7 +884,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           <section style={{ marginTop: "1.35rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "baseline" }}>
               <div style={{ fontWeight: 900 }}>History</div>
-              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>Last 7 game days (8 PM rollover)</div>
+              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>Last 7 days (new word at 8 PM)</div>
             </div>
 
             <div style={{ marginTop: "0.6rem", display: "grid", gap: "0.6rem" }}>
@@ -910,9 +897,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                   padding: "0.65rem 0.85rem",
                 }}
               >
-                <div style={{ fontWeight: 900, marginBottom: "0.2rem" }}>
-                  Yesterday ({yesterday})
-                </div>
+                <div style={{ fontWeight: 900, marginBottom: "0.2rem" }}>Yesterday ({yesterday})</div>
                 {yesterdaySummary ? (
                   <div style={{ color: UI.subtext }}>
                     Score <b style={{ color: UI.text }}>{yesterdaySummary.totalPoints}</b> •{" "}
@@ -963,7 +948,13 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontWeight: 900, color: UI.text }}>{h.totalPoints} pts</div>
-                        <div style={{ fontSize: "0.95rem", fontWeight: 900, color: h.completed ? UI.ok : UI.danger }}>
+                        <div
+                          style={{
+                            fontSize: "0.95rem",
+                            fontWeight: 900,
+                            color: h.completed ? UI.ok : UI.danger,
+                          }}
+                        >
                           {h.completed ? "✅ Completed" : "❌ Not yet"}
                         </div>
                       </div>
@@ -979,7 +970,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
             <div style={{ fontWeight: 900, marginBottom: "0.5rem" }}>Guesses</div>
 
             {results.length === 0 ? (
-              <div style={{ color: UI.subtext }}>No guesses yet. Try your first word!</div>
+              <div style={{ color: UI.subtext }}>No guesses yet. Start with any word you see.</div>
             ) : (
               <div
                 style={{
