@@ -1,8 +1,7 @@
 import Game from "./game";
-import { getDailyWord } from "../utils/dailyWord";
+import { getDailyWord } from "@/lib/dailyWord";
 
 export default function Page() {
   const dailyWord = getDailyWord();
-
-  return <Game dailyWord={dailyWord.toUpperCase()} />;
+  return <Game dailyWord={dailyWord} />;
 }
