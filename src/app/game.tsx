@@ -589,21 +589,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         justifyContent: "center",
       }}
     >
-      <div style={{ width: "100%", maxWidth: UI.pageMax }}>
-        {/* TOP RESET STRIP (single 8PM message) */}
-        <div
-          style={{
-            textAlign: "center",
-            marginBottom: "1rem",
-            fontSize: "0.95rem",
-            color: UI.subtext,
-          }}
-        >
-          New word every day at <b style={{ color: UI.text }}>8:00 PM local</b> • Next at{" "}
-          <b style={{ color: UI.text }}>{nextAtText}</b> • in{" "}
-          <b style={{ color: UI.text }}>{countdownText}</b>
-        </div>
-
         <div
           style={{
             margin: "0 auto",
