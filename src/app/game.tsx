@@ -123,6 +123,25 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const normalizedGuess = useMemo(() => guess.trim().toLowerCase(), [guess]);
   const guessCounts = useMemo(() => counts(normalizedGuess), [normalizedGuess]);
 
+  // ✅ NEW: per-tile used state (handles duplicates correctly)
+  // If guess uses 1 "a" and the bank has 2 "a" tiles, only ONE "a" tile grays out.
+  const usedTiles = useMemo(() => {
+    const usedSoFar = new Map<string, number>();
+    const out: boolean[] = new Array(bankLetters.length).fill(false);
+
+    for (let i = 0; i < bankLetters.length; i++) {
+      const ch = bankLetters[i];
+      const usedCount = guessCounts.get(ch) ?? 0;
+
+      const seen = (usedSoFar.get(ch) ?? 0) + 1;
+      usedSoFar.set(ch, seen);
+
+      if (seen <= usedCount) out[i] = true;
+    }
+
+    return out;
+  }, [bankLetters, guessCounts]);
+
   // ✅ build-safe: no Map.entries() iteration
   const fitsBank = useMemo(() => {
     let ok = true;
@@ -213,7 +232,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
       if (last === today) return prev; // already counted today
 
-      const yKey = yesterdayKey(today);
+      const yKey = yesterdayKey(todayKey);
       const nextCurrent = last === yKey ? prev.current + 1 : 1;
       const nextBest = Math.max(prev.best, nextCurrent);
 
@@ -262,6 +281,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     focusInput();
   }
 
+  // Keep this for click-adding safety (though tiles now show per-index availability)
   function canUseLetter(ch: string) {
     const total = bankCounts.get(ch) ?? 0;
     const used = guessCounts.get(ch) ?? 0;
@@ -559,14 +579,14 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
             <div style={{ marginTop: "0.65rem", display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
               {bankLetters.map((ch, i) => {
-                const available = canUseLetter(ch);
+                const available = !usedTiles[i]; // ✅ per-tile availability
                 return (
                   <button
                     key={`${ch}-${i}`}
                     onClick={() => appendLetter(ch)}
                     disabled={!available || isSubmitting}
                     style={tileStyle(available && !isSubmitting)}
-                    aria-label={`Letter ${ch}${available ? "" : " unavailable"}`}
+                    aria-label={`Letter ${ch}${available ? "" : " used"}`}
                   >
                     {ch.toUpperCase()}
                   </button>
