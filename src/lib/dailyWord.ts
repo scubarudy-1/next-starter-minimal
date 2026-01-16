@@ -21,18 +21,24 @@ function getPool(): string[] {
 
 /**
  * Returns a YYYY-MM-DD key where the "day" rolls over at 8:00 PM LOCAL time.
- * Implementation matches client logic: shift time back 20 hours.
+ * (Local to the runtime executing this code.)
  */
-function dayKeyLocal8pm(now = new Date()) {
+function dayKeyLocal8pm(now = new Date()): string {
   const d = new Date(now);
-  d.setHours(d.getHours() - 20); // 8 PM rollover
+
+  // If it's before 8pm, treat it as "yesterday"
+  if (d.getHours() < 20) {
+    d.setDate(d.getDate() - 1);
+  }
+
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
+
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export function getDailyWord(now = new Date()) {
+export function getDailyWord(now = new Date()): string {
   const key = dayKeyLocal8pm(now);
   const words = getPool();
 
@@ -45,5 +51,6 @@ export function getDailyWord(now = new Date()) {
   return words[hash % words.length];
 }
 
-export function getDailyKey(now = new Date()) {
-  return dayKeyLocal8pm(now)
+export function getDailyKey(now = new Date()): string {
+  return dayKeyLocal8pm(now);
+}
