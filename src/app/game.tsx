@@ -137,17 +137,20 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
 
     setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guess: trimmed }),
-      });
+try {
+  const res = await fetch("/api/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      guess: trimmed,
+      dailyWord, // ✅ makes API validate against the same word UI shows
+    }),
+  });
 
-      const data: { valid?: boolean; reason?: string } = await res.json();
+  const data: { valid?: boolean; reason?: string } = await res.json();
 
-      const valid = !!data.valid;
-      const points = valid ? getPointsForLength(trimmed.length) : 0;
+  const valid = !!data.valid;
+  const points = valid ? getPointsForLength(trimmed.length) : 0;
 
       setResults((prev) => [...prev, { word: trimmed, valid, points }]);
 
