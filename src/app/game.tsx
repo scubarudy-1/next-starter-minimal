@@ -71,8 +71,11 @@ function yesterdayKey(todayKey: string) {
   return localDayKey(dt);
 }
 
-const STREAK_KEY = "wordsinwords:streak:v1";
-type StreakState = { current: number; best: number; lastPlayed: string | null };
+// -------- Daily completion + streaks --------
+const DAILY_GOAL_POINTS = 20;
+const COMPLETED_PREFIX = "wordsinwords:completed:v1:"; // + YYYY-MM-DD
+const STREAK_KEY = "wordsinwords:streak:v2"; // v2 because logic changed
+type StreakState = { current: number; best: number; lastCompleted: string | null };
 
 export default function Game({ dailyWord }: { dailyWord: string }) {
   // ---------- “Metazooa clean” style knobs (tweak here) ----------
@@ -93,6 +96,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     ok: "#166534",
   } as const;
 
+  const todayKey = useMemo(() => localDayKey(), []);
+  const completedKey = useMemo(() => `${COMPLETED_PREFIX}${todayKey}`, [todayKey]);
+
   const bankLetters = useMemo(() => dailyWord.toLowerCase().split(""), [dailyWord]);
   const bankCounts = useMemo(() => counts(dailyWord.toLowerCase()), [dailyWord]);
 
@@ -100,6 +106,8 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [completedToday, setCompletedToday] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -124,45 +132,60 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     return ok;
   }, [guessCounts, bankCounts]);
 
+  const totalPoints = useMemo(
+    () => results.reduce((sum, r) => sum + (r.valid ? r.points : 0), 0),
+    [results]
+  );
+
+  const pointsPreview = useMemo(() => {
+    if (
+      isSubmitting ||
+      normalizedGuess.length < 4 ||
+      normalizedGuess.length > dailyWord.length ||
+      !fitsBank
+    )
+      return 0;
+    return getPointsForLength(normalizedGuess.length);
+  }, [isSubmitting, normalizedGuess.length, dailyWord.length, fitsBank]);
+
   const submitDisabled =
     isSubmitting ||
     normalizedGuess.length < 4 ||
     normalizedGuess.length > dailyWord.length ||
     !fitsBank;
 
-  const pointsPreview = useMemo(() => {
-    if (submitDisabled) return 0;
-    return getPointsForLength(normalizedGuess.length);
-  }, [submitDisabled, normalizedGuess.length]);
-
-  const totalPoints = useMemo(
-    () => results.reduce((sum, r) => sum + (r.valid ? r.points : 0), 0),
-    [results]
-  );
-
-  // ----- Streaks -----
-  const todayKey = useMemo(() => localDayKey(), []);
+  // ----- Streaks (completion-based) -----
   const [streak, setStreak] = useState<StreakState>({
     current: 0,
     best: 0,
-    lastPlayed: null,
+    lastCompleted: null,
   });
 
   useEffect(() => {
+    // Load completion flag
+    try {
+      const raw = localStorage.getItem(completedKey);
+      if (raw === "1") setCompletedToday(true);
+    } catch {
+      // ignore
+    }
+
+    // Load streak
     try {
       const raw = localStorage.getItem(STREAK_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as StreakState;
+      const parsed = JSON.parse(raw) as Partial<StreakState>;
       if (parsed && typeof parsed.current === "number" && typeof parsed.best === "number") {
         setStreak({
           current: parsed.current ?? 0,
           best: parsed.best ?? 0,
-          lastPlayed: parsed.lastPlayed ?? null,
+          lastCompleted: parsed.lastCompleted ?? null,
         });
       }
     } catch {
       // ignore
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -173,9 +196,19 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     }
   }, [streak]);
 
-  function recordPlayIfNeeded() {
+  useEffect(() => {
+    // Persist completion flag
+    try {
+      if (completedToday) localStorage.setItem(completedKey, "1");
+      else localStorage.removeItem(completedKey);
+    } catch {
+      // ignore
+    }
+  }, [completedToday, completedKey]);
+
+  function recordCompletionIfNeeded() {
     setStreak((prev) => {
-      const last = prev.lastPlayed;
+      const last = prev.lastCompleted;
       const today = todayKey;
 
       if (last === today) return prev; // already counted today
@@ -184,7 +217,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       const nextCurrent = last === yKey ? prev.current + 1 : 1;
       const nextBest = Math.max(prev.best, nextCurrent);
 
-      return { current: nextCurrent, best: nextBest, lastPlayed: today };
+      return { current: nextCurrent, best: nextBest, lastCompleted: today };
     });
   }
 
@@ -208,6 +241,15 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       /* ignore */
     }
   }, [results]);
+
+  // If results already imply goal reached (e.g., after refresh), ensure completed flag is set.
+  useEffect(() => {
+    if (!completedToday && totalPoints >= DAILY_GOAL_POINTS) {
+      setCompletedToday(true);
+      recordCompletionIfNeeded();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPoints]);
 
   function clearGuess() {
     setGuess("");
@@ -238,9 +280,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
     setError(null);
 
-    // ✅ streak counts when you submit at least one guess today (valid or invalid)
-    recordPlayIfNeeded();
-
     if (results.some((r) => r.word === trimmed)) {
       clearGuess();
       return;
@@ -262,9 +301,18 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       const valid = !!data.valid;
       const points = valid ? getPointsForLength(trimmed.length) : 0;
 
+      // Compute next total points deterministically
+      const nextTotal = totalPoints + points;
+
       setResults((prev) => [...prev, { word: trimmed, valid, points }]);
 
       if (!valid) setError(friendlyError(data.reason));
+
+      // ✅ Daily completion check (only triggers once)
+      if (!completedToday && nextTotal >= DAILY_GOAL_POINTS) {
+        setCompletedToday(true);
+        recordCompletionIfNeeded();
+      }
 
       clearGuess();
     } catch {
@@ -319,6 +367,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     boxShadow: available ? "0 10px 22px rgba(0,0,0,0.07)" : "none",
   });
 
+  const goalProgress = Math.min(DAILY_GOAL_POINTS, totalPoints);
+  const goalPct = Math.round((goalProgress / DAILY_GOAL_POINTS) * 100);
+
   return (
     <main
       style={{
@@ -352,11 +403,55 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                 Today’s word:{" "}
                 <span style={{ fontWeight: 800, color: UI.text }}>{dailyWord.toUpperCase()}</span>
               </div>
+
+              {/* Daily goal */}
+              <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ color: UI.subtext }}>
+                    <b style={{ color: UI.text }}>Daily goal:</b> {goalProgress}/{DAILY_GOAL_POINTS} pts
+                  </div>
+                  {completedToday && (
+                    <span
+                      style={{
+                        padding: "0.25rem 0.6rem",
+                        borderRadius: 999,
+                        border: UI.border,
+                        background: "rgba(22,101,52,0.10)",
+                        color: UI.ok,
+                        fontWeight: 800,
+                      }}
+                    >
+                      ✅ Completed
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    marginTop: "0.35rem",
+                    height: 10,
+                    borderRadius: 999,
+                    border: UI.border,
+                    background: "rgba(255,255,255,0.55)",
+                    overflow: "hidden",
+                    maxWidth: 360,
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${goalPct}%`,
+                      background: completedToday ? "rgba(22,101,52,0.55)" : "rgba(0,0,0,0.18)",
+                      transition: "width 200ms ease",
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             <div style={{ textAlign: "right", color: UI.subtext }}>
               <div style={{ fontWeight: 900, color: UI.text }}>
-                🔥 {streak.current} <span style={{ fontWeight: 700, color: UI.subtext }}>streak</span>
+                🔥 {streak.current}{" "}
+                <span style={{ fontWeight: 700, color: UI.subtext }}>streak</span>
               </div>
               <div style={{ fontSize: "0.95rem" }}>
                 Best: <b style={{ color: UI.text }}>{streak.best}</b>
