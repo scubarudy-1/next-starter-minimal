@@ -32,7 +32,6 @@ type Result = {
 };
 
 function getPointsForLength(len: number) {
-  // 4 = 1, 5 = 2, 6 = 3, 7+ = 5
   if (len < 4) return 0;
   if (len === 4) return 1;
   if (len === 5) return 2;
@@ -69,12 +68,13 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const normalizedGuess = useMemo(() => guess.trim().toLowerCase(), [guess]);
   const guessCounts = useMemo(() => counts(normalizedGuess), [normalizedGuess]);
 
-  // Derived: does the typed word fit in the letter bank?
+  // ✅ FIXED: no Map.entries(), safe for Vercel
   const fitsBank = useMemo(() => {
-    for (const [ch, n] of guessCounts.entries()) {
-      if ((bankCounts.get(ch) ?? 0) < n) return false;
-    }
-    return true;
+    let ok = true;
+    guessCounts.forEach((n, ch) => {
+      if ((bankCounts.get(ch) ?? 0) < n) ok = false;
+    });
+    return ok;
   }, [guessCounts, bankCounts]);
 
   const totalPoints = useMemo(
@@ -90,7 +90,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) setResults(parsed);
     } catch {
-      // ignore
+      /* ignore */
     }
   }, []);
 
@@ -99,7 +99,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     try {
       localStorage.setItem(storageKeyForToday(), JSON.stringify(results));
     } catch {
-      // ignore
+      /* ignore */
     }
   }, [results]);
 
@@ -128,9 +128,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
     setError(null);
 
-    // No duplicate guesses
-    const alreadyGuessed = results.some((r) => r.word === trimmed);
-    if (alreadyGuessed) {
+    if (results.some((r) => r.word === trimmed)) {
       clearGuess();
       return;
     }
@@ -142,7 +140,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           guess: trimmed,
-          dailyWord, // critical: keeps server validation aligned with UI word
+          dailyWord,
         }),
       });
 
@@ -165,7 +163,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
   const submitDisabled =
     isSubmitting ||
-    normalizedGuess.length === 0 ||
     normalizedGuess.length < 4 ||
     normalizedGuess.length > dailyWord.length ||
     !/^[a-z]+$/.test(normalizedGuess) ||
@@ -173,148 +170,73 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
   return (
     <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif", maxWidth: 820 }}>
-      <h1 style={{ marginBottom: "0.5rem" }}>Words in Words</h1>
-      <p style={{ marginTop: 0 }}>
+      <h1>Words in Words</h1>
+      <p>
         Today’s word: <b>{dailyWord}</b>
       </p>
 
-      {/* Guess / controls */}
-      <div style={{ marginTop: "1rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            value={guess}
-            onChange={(e) => setGuess(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSubmit(guess);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                clearGuess();
-              }
-            }}
-            placeholder="Type a word (or click letters below)"
-            style={{
-              padding: "0.6rem 0.75rem",
-              fontSize: "1rem",
-              width: "300px",
-            }}
-            disabled={isSubmitting}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <input
+          value={guess}
+          onChange={(e) => setGuess(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit(guess);
+            if (e.key === "Escape") clearGuess();
+          }}
+          placeholder="Type a word (or click letters)"
+          disabled={isSubmitting}
+        />
 
-          <button
-            onClick={() => handleSubmit(guess)}
-            disabled={submitDisabled}
-            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
-          >
-            {isSubmitting ? "Checking..." : "Submit"}
-          </button>
+        <button onClick={() => handleSubmit(guess)} disabled={submitDisabled}>
+          {isSubmitting ? "Checking…" : "Submit"}
+        </button>
 
-          <button
-            onClick={removeLastChar}
-            disabled={isSubmitting || guess.length === 0}
-            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
-            title="Backspace"
-          >
-            Back
-          </button>
+        <button onClick={removeLastChar} disabled={!guess}>
+          Back
+        </button>
 
-          <button
-            onClick={clearGuess}
-            disabled={isSubmitting || guess.length === 0}
-            style={{ padding: "0.6rem 0.9rem", fontSize: "1rem" }}
-            title="Escape"
-          >
-            Clear
-          </button>
-        </div>
-
-        {/* Live “bank fit” feedback (Metazooa-ish) */}
-        {normalizedGuess.length > 0 && !fitsBank && (
-          <div style={{ marginTop: "0.5rem", color: "crimson" }}>
-            Uses letters not available in today’s word.
-          </div>
-        )}
-
-        {error && <div style={{ marginTop: "0.75rem", color: "crimson" }}>{error}</div>}
+        <button onClick={clearGuess} disabled={!guess}>
+          Clear
+        </button>
       </div>
 
-      {/* Letter Bank */}
-      <section style={{ marginTop: "1.5rem" }}>
-        <div style={{ marginBottom: "0.5rem" }}>
-          <b>Letter bank</b>{" "}
-          <span style={{ color: "#555" }}>(click letters to add • typing is primary)</span>
+      {normalizedGuess && !fitsBank && (
+        <div style={{ color: "crimson", marginTop: "0.5rem" }}>
+          Uses letters not available in today’s word.
         </div>
+      )}
 
+      {error && <div style={{ color: "crimson" }}>{error}</div>}
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <b>Letter bank</b>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {bankLetters.map((ch, i) => {
             const available = canUseLetter(ch);
-
             return (
               <button
                 key={`${ch}-${i}`}
                 onClick={() => appendLetter(ch)}
                 disabled={!available || isSubmitting}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                  background: available ? "white" : "#eee",
-                  cursor: available ? "pointer" : "not-allowed",
-                  fontSize: "1.1rem",
-                  fontWeight: 700,
-                  opacity: available ? 1 : 0.55,
-                }}
-                aria-label={`Letter ${ch}${available ? "" : " unavailable"}`}
+                style={{ opacity: available ? 1 : 0.4 }}
               >
                 {ch.toUpperCase()}
               </button>
             );
           })}
         </div>
-
-        {/* Letter usage counts */}
-        <div style={{ marginTop: "0.6rem", color: "#666", fontSize: "0.95rem" }}>
-          {Array.from(bankCounts.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([ch, total]) => {
-              const used = guessCounts.get(ch) ?? 0;
-              return (
-                <span key={ch} style={{ marginRight: "0.75rem" }}>
-                  {ch.toUpperCase()}: {used}/{total}
-                </span>
-              );
-            })}
-        </div>
       </section>
 
-      {/* Score + results */}
-      <div style={{ marginTop: "1.5rem" }}>
-        <div style={{ marginBottom: "0.5rem" }}>
-          <b>Total points:</b> {totalPoints}
-        </div>
-
-        <div style={{ marginBottom: "0.35rem" }}>
-          <b>Guesses ({results.length}):</b>
-        </div>
-
-        <ul style={{ paddingLeft: "1.25rem", marginTop: 0 }}>
+      <section style={{ marginTop: "1.5rem" }}>
+        <b>Total points:</b> {totalPoints}
+        <ul>
           {results.map((r) => (
-            <li key={r.word} style={{ marginBottom: "0.25rem" }}>
-              <span style={{ fontWeight: 600 }}>{r.word}</span>{" "}
-              {r.valid ? (
-                <span style={{ color: "green" }}>✓ +{r.points}</span>
-              ) : (
-                <span style={{ color: "crimson" }}>✗</span>
-              )}
+            <li key={r.word}>
+              {r.word} {r.valid ? `✓ +${r.points}` : "✗"}
             </li>
           ))}
         </ul>
-      </div>
+      </section>
     </main>
   );
 }
