@@ -56,6 +56,24 @@ function counts(s: string) {
   return m;
 }
 
+/** Local “day key” (matches your results storage behavior) */
+function localDayKey(date = new Date()) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function yesterdayKey(todayKey: string) {
+  const [y, m, d] = todayKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() - 1);
+  return localDayKey(dt);
+}
+
+const STREAK_KEY = "wordsinwords:streak:v1";
+type StreakState = { current: number; best: number; lastPlayed: string | null };
+
 export default function Game({ dailyWord }: { dailyWord: string }) {
   // ---------- “Metazooa clean” style knobs (tweak here) ----------
   const UI = {
@@ -122,6 +140,54 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     [results]
   );
 
+  // ----- Streaks -----
+  const todayKey = useMemo(() => localDayKey(), []);
+  const [streak, setStreak] = useState<StreakState>({
+    current: 0,
+    best: 0,
+    lastPlayed: null,
+  });
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STREAK_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as StreakState;
+      if (parsed && typeof parsed.current === "number" && typeof parsed.best === "number") {
+        setStreak({
+          current: parsed.current ?? 0,
+          best: parsed.best ?? 0,
+          lastPlayed: parsed.lastPlayed ?? null,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STREAK_KEY, JSON.stringify(streak));
+    } catch {
+      // ignore
+    }
+  }, [streak]);
+
+  function recordPlayIfNeeded() {
+    setStreak((prev) => {
+      const last = prev.lastPlayed;
+      const today = todayKey;
+
+      if (last === today) return prev; // already counted today
+
+      const yKey = yesterdayKey(today);
+      const nextCurrent = last === yKey ? prev.current + 1 : 1;
+      const nextBest = Math.max(prev.best, nextCurrent);
+
+      return { current: nextCurrent, best: nextBest, lastPlayed: today };
+    });
+  }
+
   // Load saved results
   useEffect(() => {
     try {
@@ -171,6 +237,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     if (!trimmed) return;
 
     setError(null);
+
+    // ✅ streak counts when you submit at least one guess today (valid or invalid)
+    recordPlayIfNeeded();
 
     if (results.some((r) => r.word === trimmed)) {
       clearGuess();
@@ -286,8 +355,15 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
             </div>
 
             <div style={{ textAlign: "right", color: UI.subtext }}>
-              <div style={{ fontWeight: 800, color: UI.text }}>{totalPoints} pts</div>
-              <div style={{ fontSize: "0.95rem" }}>{results.length} guesses</div>
+              <div style={{ fontWeight: 900, color: UI.text }}>
+                🔥 {streak.current} <span style={{ fontWeight: 700, color: UI.subtext }}>streak</span>
+              </div>
+              <div style={{ fontSize: "0.95rem" }}>
+                Best: <b style={{ color: UI.text }}>{streak.best}</b>
+              </div>
+              <div style={{ fontSize: "0.95rem", marginTop: "0.2rem" }}>
+                <b style={{ color: UI.text }}>{totalPoints}</b> pts • {results.length} guesses
+              </div>
             </div>
           </div>
 
@@ -298,7 +374,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
                 ref={inputRef}
                 value={guess}
                 onChange={(e) => {
-                  // Metazooa-ish: gently normalize input
                   const cleaned = e.target.value.toLowerCase().replace(/[^a-z]/g, "");
                   setGuess(cleaned);
                   setError(null);
