@@ -32,7 +32,7 @@ type Result = {
 };
 
 type DaySummary = {
-  key: string; // YYYY-MM-DD
+  key: string; // YYYY-MM-DD (GAME DAY KEY — 8PM rollover)
   totalPoints: number;
   validCount: number;
   totalGuesses: number;
@@ -47,15 +47,6 @@ function getPointsForLength(len: number) {
   return 5;
 }
 
-/** Storage key for results list (your original behavior: local midnight). */
-function storageKeyForToday() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `wordsinwords:${yyyy}-${mm}-${dd}:results`;
-}
-
 function counts(s: string) {
   const m = new Map<string, number>();
   for (const ch of s) {
@@ -65,7 +56,7 @@ function counts(s: string) {
   return m;
 }
 
-/** Local “day key” (matches your results storage behavior for streak/history keys) */
+/** YYYY-MM-DD from a Date (local) */
 function localDayKey(date = new Date()) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -73,11 +64,29 @@ function localDayKey(date = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function yesterdayKey(todayKey: string) {
-  const [y, m, d] = todayKey.split("-").map(Number);
+/** -------- 8PM GAME DAY KEY --------
+ * We want the day to switch at 8:00 PM local time.
+ * Trick: shift time back 20 hours so "after 8pm" maps into the next calendar date.
+ */
+function getGameDayDate(now = new Date()) {
+  const d = new Date(now);
+  d.setHours(d.getHours() - 20);
+  return d;
+}
+function gameDayKey(now = new Date()) {
+  return localDayKey(getGameDayDate(now));
+}
+
+function yesterdayKeyFromGameDayKey(todayGameKey: string) {
+  const [y, m, d] = todayGameKey.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() - 1);
   return localDayKey(dt);
+}
+
+/** Storage key for results list (ALIGNED to 8PM game day). */
+function storageKeyForGameDay(dayKey: string) {
+  return `wordsinwords:${dayKey}:results`;
 }
 
 // -------- 8PM local rollover countdown --------
@@ -99,7 +108,7 @@ function formatDuration(ms: number) {
 
 // -------- Daily completion + streaks --------
 const DAILY_GOAL_POINTS = 20;
-const COMPLETED_PREFIX = "wordsinwords:completed:v1:"; // + YYYY-MM-DD
+const COMPLETED_PREFIX = "wordsinwords:completed:v1:"; // + YYYY-MM-DD (GAME DAY KEY)
 const STREAK_KEY = "wordsinwords:streak:v2"; // completion-based streaks
 type StreakState = { current: number; best: number; lastCompleted: string | null };
 
@@ -124,9 +133,6 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     danger: "#b91c1c",
     ok: "#166534",
   } as const;
-
-  const todayKey = useMemo(() => localDayKey(), []);
-  const completedKey = useMemo(() => `${COMPLETED_PREFIX}${todayKey}`, [todayKey]);
 
   const bankLetters = useMemo(() => dailyWord.toLowerCase().split(""), [dailyWord]);
   const bankCounts = useMemo(() => counts(dailyWord.toLowerCase()), [dailyWord]);
@@ -164,6 +170,49 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     () => nextRollover.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
     [nextRollover]
   );
+
+  // ✅ GAME DAY KEY (8PM aligned) — updates over time
+  const todayKey = useMemo(() => gameDayKey(nowTick), [nowTick]);
+  const completedKey = useMemo(() => `${COMPLETED_PREFIX}${todayKey}`, [todayKey]);
+  const resultsStorageKey = useMemo(() => storageKeyForGameDay(todayKey), [todayKey]);
+
+  // Used to detect rollover and reset state
+  const prevDayKeyRef = useRef<string>(todayKey);
+  useEffect(() => {
+    const prev = prevDayKeyRef.current;
+    if (prev !== todayKey) {
+      prevDayKeyRef.current = todayKey;
+
+      // Hard reset for the new day
+      setGuess("");
+      setError(null);
+      setIsSubmitting(false);
+      setJustCompletedPulse(false);
+
+      // Load new day's persisted state
+      try {
+        const rawCompleted = localStorage.getItem(`${COMPLETED_PREFIX}${todayKey}`);
+        setCompletedToday(rawCompleted === "1");
+      } catch {
+        setCompletedToday(false);
+      }
+
+      try {
+        const rawResults = localStorage.getItem(storageKeyForGameDay(todayKey));
+        if (rawResults) {
+          const parsed = JSON.parse(rawResults);
+          if (Array.isArray(parsed)) setResults(parsed);
+          else setResults([]);
+        } else {
+          setResults([]);
+        }
+      } catch {
+        setResults([]);
+      }
+
+      focusInput();
+    }
+  }, [todayKey]);
 
   const normalizedGuess = useMemo(() => guess.trim().toLowerCase(), [guess]);
   const guessCounts = useMemo(() => counts(normalizedGuess), [normalizedGuess]);
@@ -262,7 +311,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
 
   // Load completion/streak/history/results on mount
   useEffect(() => {
-    // completion flag
+    // completion flag (for CURRENT game day)
     try {
       const raw = localStorage.getItem(completedKey);
       if (raw === "1") setCompletedToday(true);
@@ -292,9 +341,9 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       }
     } catch {}
 
-    // results
+    // results (for CURRENT game day)
     try {
-      const raw = localStorage.getItem(storageKeyForToday());
+      const raw = localStorage.getItem(resultsStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) setResults(parsed);
@@ -318,12 +367,12 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
     } catch {}
   }, [completedToday, completedKey]);
 
-  // Persist results
+  // Persist results (for CURRENT game day)
   useEffect(() => {
     try {
-      localStorage.setItem(storageKeyForToday(), JSON.stringify(results));
+      localStorage.setItem(resultsStorageKey, JSON.stringify(results));
     } catch {}
-  }, [results]);
+  }, [results, resultsStorageKey]);
 
   // Persist history
   useEffect(() => {
@@ -338,7 +387,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       const today = todayKey;
       if (last === today) return prev;
 
-      const yKey = yesterdayKey(todayKey);
+      const yKey = yesterdayKeyFromGameDayKey(todayKey);
       const nextCurrent = last === yKey ? prev.current + 1 : 1;
       const nextBest = Math.max(prev.best, nextCurrent);
       return { current: nextCurrent, best: nextBest, lastCompleted: today };
@@ -366,7 +415,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   useEffect(() => {
     upsertHistoryForToday();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalPoints, validCount, results.length, completedToday]);
+  }, [totalPoints, validCount, results.length, completedToday, todayKey]);
 
   // If results already imply goal reached (e.g., after refresh), ensure completion is set
   useEffect(() => {
@@ -375,7 +424,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
       recordCompletionIfNeeded();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalPoints]);
+  }, [totalPoints, todayKey]);
 
   // ---- Share text ----
   function buildShareText() {
@@ -523,12 +572,12 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
   const goalProgress = Math.min(DAILY_GOAL_POINTS, totalPoints);
   const goalPct = Math.round((goalProgress / DAILY_GOAL_POINTS) * 100);
 
-  // History helpers
-  const yesterday = useMemo(() => yesterdayKey(todayKey), [todayKey]);
-  const yesterdaySummary = useMemo(() => history.find((h) => h.key === yesterday) ?? null, [
-    history,
-    yesterday,
-  ]);
+  // History helpers (GAME DAY aligned)
+  const yesterday = useMemo(() => yesterdayKeyFromGameDayKey(todayKey), [todayKey]);
+  const yesterdaySummary = useMemo(
+    () => history.find((h) => h.key === yesterday) ?? null,
+    [history, yesterday]
+  );
 
   return (
     <main
@@ -848,7 +897,7 @@ export default function Game({ dailyWord }: { dailyWord: string }) {
           <section style={{ marginTop: "1.35rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "baseline" }}>
               <div style={{ fontWeight: 900 }}>History</div>
-              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>Last 7 days (local)</div>
+              <div style={{ color: UI.subtext, fontSize: "0.95rem" }}>Last 7 game days (8 PM rollover)</div>
             </div>
 
             <div style={{ marginTop: "0.6rem", display: "grid", gap: "0.6rem" }}>
