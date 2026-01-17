@@ -1,130 +1,38 @@
-"use client";
+// src/app/page.tsx
+import Link from "next/link";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import Game from "./game";
-
-/* ---------- 8 PM LOCAL DAY KEY ---------- */
-function gameDayKeyLocal8pm(now = new Date()) {
-  const d = new Date(now);
-  d.setHours(d.getHours() - 20);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function nextRolloverLocal8pm(now = new Date()) {
-  const d = new Date(now);
-  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 20, 0, 0, 0);
-  if (d.getTime() >= next.getTime()) next.setDate(next.getDate() + 1);
-  return next;
-}
-
-export default function Page() {
-  const [dailyWord, setDailyWord] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const [nowTick, setNowTick] = useState(() => new Date());
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTick(new Date()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const dayKey = useMemo(() => gameDayKeyLocal8pm(nowTick), [nowTick]);
-  const lastLoadedKeyRef = useRef<string | null>(null);
-
-  async function loadWord(forKey: string) {
-    setErr(null);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/daily?key=${encodeURIComponent(forKey)}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`Daily API error (${res.status})`);
-      const data: { word: string } = await res.json();
-      setDailyWord(data.word);
-      lastLoadedKeyRef.current = forKey;
-    } catch {
-      setErr("We couldn’t load today’s word.");
-      setDailyWord("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Initial load + rollover
-  useEffect(() => {
-    if (lastLoadedKeyRef.current !== dayKey) {
-      loadWord(dayKey);
-    }
-  }, [dayKey]);
-
-  // Hard guarantee at rollover even if tab sleeps
-  useEffect(() => {
-    const next = nextRolloverLocal8pm(new Date());
-    const ms = next.getTime() - Date.now() + 250;
-    const t = window.setTimeout(() => {
-      loadWord(gameDayKeyLocal8pm(new Date()));
-    }, ms);
-    return () => window.clearTimeout(t);
-  }, [dayKey]);
-
-  /* ---------- LOADING ---------- */
-  if (loading && !dailyWord) {
-    return (
-      <main style={{ padding: "2rem", maxWidth: 760, margin: "0 auto" }}>
-        <h1>Words in Words</h1>
-        <p style={{ opacity: 0.75 }}>Loading today’s word…</p>
-      </main>
-    );
-  }
-
-  /* ---------- ERROR + RETRY ---------- */
-  if (err && !dailyWord) {
-    return (
-      <main style={{ padding: "2rem", maxWidth: 760, margin: "0 auto" }}>
-        <h1>Words in Words</h1>
-        <p style={{ color: "#b91c1c", fontWeight: 600 }}>{err}</p>
-
-        <button
-          onClick={() => location.reload()}
-          style={{
-            marginTop: "1rem",
-            padding: "0.6rem 1rem",
-            borderRadius: 999,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >
-          Retry
-        </button>
-      </main>
-    );
-  }
-
-  /* ---------- GAME ---------- */
+export default function HomePage() {
   return (
-    <>
-      {/* FIRST-TIME PLAYER CLARITY */}
-      <div
-        style={{
-          maxWidth: 760,
-          margin: "1.25rem auto 0",
-          padding: "0 1rem",
-          textAlign: "center",
-          color: "rgba(0,0,0,0.7)",
-          fontSize: "0.95rem",
-        }}
-      >
-        Make as many real words as you can using today’s word.
-        <br />
-        <strong>New word drops at 8 PM local time.</strong>
+    <main className="mx-auto max-w-3xl py-10 sm:py-14">
+      <div className="text-center">
+        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">
+          Words in Words
+        </h1>
+        <p className="mt-4 text-lg opacity-80">
+          Make as many real words as you can using today’s word.
+        </p>
+        <p className="mt-1 opacity-70">
+          New word drops at <span className="font-semibold">8 PM</span> local time.
+        </p>
       </div>
 
-      <Game dailyWord={dailyWord} />
-    </>
+      <div className="mt-8 rounded-2xl border bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-bold">How it works</h2>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 opacity-90">
+          <li>You get one big word each day.</li>
+          <li>Use its letters to form words (letters can’t be overused).</li>
+          <li>Words must be valid (4+ letters), and you can’t repeat guesses.</li>
+          <li>Longer words score more points. Build a streak over time.</li>
+        </ol>
+      </div>
+
+      <div className="mt-10 flex justify-center">
+        <Link href="/play">
+          <button className="rounded-full px-6 py-3 font-bold border shadow-sm hover:shadow transition">
+            Enter Words in Words →
+          </button>
+        </Link>
+      </div>
+    </main>
   );
 }
