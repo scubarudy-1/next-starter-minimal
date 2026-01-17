@@ -1,6 +1,6 @@
 // src/app/play/page.tsx
-import Game from "../game";
+import PlayClient from "@/components/PlayClient";
 
 export default function PlayPage() {
-  return <Game />;
+  return <PlayClient />;
 }
